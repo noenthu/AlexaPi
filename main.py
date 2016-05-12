@@ -17,8 +17,8 @@ import threading
 import cgi 
 import email
 
-import misc
-import send
+# import misc
+# import send
 
 
 #Settings
