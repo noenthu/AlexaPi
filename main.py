@@ -17,7 +17,6 @@ import email
 from misc import bcolors
 import send
 import datum
-import filter
 
 #Settings
 button = 18 		# GPIO Pin with button connected
