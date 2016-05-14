@@ -2,6 +2,8 @@
 import RPi.GPIO as GPIO
 import alsaaudio
 import os
+import datum
+import email
 
 button = 18 		# GPIO Pin with button connected
 plb_light = 24		# GPIO Pin for the playback/activity light
@@ -48,3 +50,24 @@ def generateINP():
 
 def tmpfolder():
     return os.path.realpath(__file__).rstrip(os.path.basename(__file__))
+
+def audioDownloadsList(r):
+	audioList = []
+	if r.status_code == 200:
+		payloads = createPayloads(r)
+		num = 0
+		for payload in payloads:
+			if payload.get_content_type() == "audio/mpeg":
+				print num
+				num += 1
+				filename = datum.tmpfolder() + "tmpcontent/"+"response"+str(num)+".mp3"
+				with open(filename, 'wb') as f:
+					f.write(payload.get_payload())
+				audioList.append(filename)
+
+	return audioList
+
+def createPayloads(r):
+	data = "Content-Type: " + r.headers['content-type'] +'\r\n\r\n'+ r.content
+	msg = email.message_from_string(data)
+	return msg.get_payload()
