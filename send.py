@@ -1,6 +1,6 @@
 import requests
 import RPi.GPIO as GPIO
-from newmain import bcolors
+from main import bcolors
 from memcache import Client
 from creds import *
 import json
