@@ -71,7 +71,7 @@ def process_response(r):
 	acontent = defineAudioContent(json.dumps(json_response(r)))
 
 	print "play any downloadable content"
-	playfirstcontent(filter.audioDownloadsList(r), vlc_playa)
+	playfirstcontent(datum.audioDownloadsList(r), vlc_playa)
 
 	print 'play any streams'
 	playsecondcontent(content, vlc_playa)
