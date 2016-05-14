@@ -43,18 +43,16 @@ i = vlc.Instance('--aout=alsa')
 
 
 def start():
-
 	while True:
 		print("{}Ready to Record.{}".format(bcolors.OKBLUE, bcolors.ENDC))
 		GPIO.wait_for_edge(button, GPIO.FALLING) # we wait for the button to be pressed
-
+	
 		print("{}Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
 		file_path = datum.recordwrite()
-
+	
 		r = send.alexa_speech_recognizer(file_path, send.gettoken())
 		process_response(r)
 		print "hi"
-		return
 
 def nextItemX(navtoke):
 	r = send.alexa_getnextitem(navtoke)
