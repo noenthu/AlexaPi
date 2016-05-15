@@ -14,8 +14,7 @@ import vlc
 import threading
 import cgi 
 import email
-import send
-import datum
+
 
 class bcolors:
 	HEADER = '\033[95m'
@@ -27,7 +26,6 @@ class bcolors:
 	BOLD = '\033[1m'
 	UNDERLINE = '\033[4m'
 
-
 #Settings
 button = 18 		# GPIO Pin with button connected
 plb_light = 24		# GPIO Pin for the playback/activity light
@@ -38,50 +36,30 @@ device = "plughw:1" # Name of your microphone/sound card in arecord -L
 #Debug
 debug = 1
 
-
 i = vlc.Instance('--aout=alsa')
-
+currentState = 0
 
 def start():
+	global abcdefgh
+	abcdefgh = vlcplayer(i)
 	while True:
+
 		print("{}Ready to Record.{}".format(bcolors.OKBLUE, bcolors.ENDC))
 		GPIO.wait_for_edge(button, GPIO.FALLING) # we wait for the button to be pressed
-	
+		playa = vlcplayer(i)
+
+
+		print currentState
+		if (abcdefgh.get_state() == 3) or (abcdefgh.get_state() == 6):
+			print("{}Stop current Audio.{}".format(bcolors.OKBLUE, bcolors.ENDC))
+			abcdefgh.stop()
+
 		print("{}Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
-		file_path = datum.recordwrite()
-	
-		r = send.alexa_speech_recognizer(file_path, send.gettoken())
-		process_response(r)
-		print "hi"
+		file_path = recordwrite()
+		# file_path = datum.tmpfolder() +'recording.wav'
 
-def nextItemX(navtoke):
-	r = send.alexa_getnextitem(navtoke)
-	process_response(r)
-
-
-def process_response(r):
-	global i
-
-	print "process x"
-	i = vlc.Instance('--aout=alsa')
-	vlc_playa = vlcplayer(i)
-	content = showjsoncontent(json.dumps(json_response(r)))
-	acontent = defineAudioContent(json.dumps(json_response(r)))
-
-	print "play any downloadable content"
-	playfirstcontent(datum.audioDownloadsList(r), vlc_playa)
-
-	print 'play any streams'
-	playsecondcontent(content, vlc_playa)
-
-	print 'play anything else'
-	playaudioitems(acontent, vlc_playa)
-
-	print "check on next"
-	shouldwecontinueon(content, acontent)
-
-	print "end"
-	return
+		r = alexa_speech_recognizer(file_path, gettoken())
+		process_response(r, playa)
 
 
 def vlcplayer(i):
@@ -89,100 +67,178 @@ def vlcplayer(i):
 	p.audio_set_volume(100)
 	return p
 
+def nextItemX(navtoke, playa):
+	r = alexa_getnextitem(navtoke)
+	process_response(r, playa)
+
+def state_callback(event, player):
+	global currentState
+	global abcdefgh
+
+	state = player.get_state()
+	currentState = state
+
+	print ">>--->>  CALLBACK <<---<<"
+	print state
+
+	if state == 6:
+		if len(songs) > 0:
+			playNext()
+
+		if len(songs) == 0:
+			if continueitems is not None:
+				if len(continueitems) > 0:
+					nextItemX(continueitems[0], player)
+
+	currentState = player.get_state()
+	if currentState != 6:
+		abcdefgh = player
+		print "set player"
+
+
+def playNext():
+	global songs, playa
+	player = vlcplayer(i)
+	playa = player
+	pthread = threading.Thread(target=playa_play, args=(playa, songs[0]))
+	songs.pop(0)
+	pthread.start()
+
+# ----------------------------------------  ----------------------------------------
+# ---------------------------------------- processing code----------------------------------------
+# ----------------------------------------  ----------------------------------------
+
+
+def process_response(r, playa):
+	global i, songs, continueitems
+	continueitems = []
+	print "begin finding content"
+
+	content = showjsoncontent(json.dumps(json_response(r)))
+	acontent = defineAudioContent(json.dumps(json_response(r)))
+
+	print "add any downloadable content"
+	songs = playfirstcontent(audioDownloadsList(r), playa)
+
+	print 'add any streams'
+	songs = playsecondcontent(content, playa, songs)
+
+	print 'add anything else'
+	songs = playaudioitems(acontent, playa, songs)
+
+	print "set next round"
+	continueitems = shouldwecontinueon(content, acontent, playa)
+
+	if len(songs) > 0:
+		pthread = threading.Thread(target=playa_play, args=(playa, songs[0]))
+		pthread.start()
+		songs.pop(0)
+
+	print "----------------------- >>>>>>>> end"
+
+
 
 def playfirstcontent(playlist, playa):
 	print ">>----------------------------------> FIRST CONTENT"
-
+	threadlist = []
 	for song in playlist:
 		print ">>----------------------------------> SPEAK"
+		threadlist.append(song)
+	return threadlist
 
-		pThread = threading.Thread(target=playa_play, args=(playa, song))
-		pThread.start()
-
-		while playa.is_playing() == 0:
-			continue
-
-		while playa.is_playing() == 1:
-			continue
-
-
-def playsecondcontent(audio, playa):
+def playsecondcontent(audio, playa, tlist):
 	print ">>----------------------------------> SECOND CONTENT"
 
 	for item in audio:
-		print item.name  # item name checked here
-
 		if item.name == "play":
 			print ">>----------------------------->>>> PLAY"
 			for link in item.streamurls:
-				print " -------- streamurl below ------ "
-				print link
-
-				if (link.find('opml.radiotime.com') != -1): # and (link.find('cid') == -1):
+				dbrief = item.navtoken[0].find('DailyBriefing')
+				if (link.find('opml.radiotime.com') != -1) and dbrief != -1: # and (link.find('cid') == -1):
 					content = findUsableStream(link)
-
-					pThread = threading.Thread(target=playa_play, args=(playa, content))
-					pThread.start()
-
-					while playa.is_playing() == 0:
-						continue
-					while playa.is_playing() == 1:
-						continue
-
+					tlist.append(content)
+				elif (link.find('opml.radiotime.com') != -1) and dbrief == -1:
+					content = findUsableStream(link)
+					tlist.append(content)
 				elif link.find("cid") == -1:
-					pThread = threading.Thread(target=playa_play, args=(playa, link))
-					pThread.start()
+					tlist.append(link)
+	return tlist
 
-					while playa.is_playing() == 0:
-						continue
-					while playa.is_playing() == 1:
-						continue
-
-	return audio
-
-def playaudioitems(audio, playa):
+def playaudioitems(audio, playa, songlist):
 	print ">>-------------------------->>> Audio Items"
-
 	for item in audio:
 		print item.name  # item name checked here
 		if item.name == "audioContent":
 			for link in item.streamurls:
-				print " -------- streamurl below ------ "
-				print link
-
 				if (link.find('opml.radiotime.com') != -1): # and (link.find('cid') == -1):
 					content = findUsableStream(link)
-
-					pThread = threading.Thread(target=playa_play, args=(playa, content))
-					pThread.start()
-
-					while playa.is_playing() == 0:
-						continue
-					while playa.is_playing() == 1:
-						continue
-
+					songlist.append(content)
 				elif link.find("cid") == -1:
-					pThread = threading.Thread(target=playa_play, args=(playa, link))
-					pThread.start()
+					songlist.append(link)
+	return songlist
 
-					while playa.is_playing() == 0:
-						continue
-					while playa.is_playing() == 1:
-						continue
-
-
-def shouldwecontinueon(content, acontent):
+def shouldwecontinueon(content, acontent, playa):
 	print "------------------------>>> should we continue?"
+	continueitem = []
 
 	for item in content:
 		print item.navtoken
 		if len(item.navtoken) != 0:
-			nextItemX(item.navtoken[0])
-
+			continueitem.append(item.navtoken[0])
+			return continueitem
 	for item in acontent:
 		print item.navtoken
 		if len(item.navtoken) != 0:
-			nextItemX(item.navtoken[0])
+			continueitem.append(item.navtoken[0])
+			return continueitem
+		else:
+			return continueitem
+
+
+def playa_play(playa, content):
+	global i
+	m = i.media_new(content)
+	playa.set_media(m)
+
+	#------> call back code? will it work
+	mm = m.event_manager()
+	mm.event_attach(vlc.EventType.MediaStateChanged, state_callback, playa)
+
+	playa.play()
+
+# ----------------------------------------  ----------------------------------------
+# ---------------------------------------- setup code ----------------------------------------
+# ----------------------------------------  ----------------------------------------
+
+def setupGPIO():
+	GPIO.setwarnings(False)
+	GPIO.cleanup()
+	GPIO.setmode(GPIO.BCM)
+	GPIO.setup(button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	GPIO.setup(lights, GPIO.OUT)
+	GPIO.output(lights, GPIO.LOW)
+
+
+def runGPIO(lght, low, high, sleeptime):
+	for x in range(low, high):
+		time.sleep(sleeptime)
+		GPIO.output(lght, GPIO.HIGH)
+		time.sleep(sleeptime)
+		GPIO.output(lght, GPIO.LOW)
+
+def setup():
+	setupGPIO()
+	while internet_on() == False:
+		print(".")
+	token = gettoken()
+	if token == False:
+		while True:
+			runGPIO(rec_light, 0, 5, .1)
+		runGPIO(plb_light, 0, 5, .1)
+
+# ----------------------------------------  ----------------------------------------
+# ---------------------------------------- decoding code ----------------------------------------
+# ----------------------------------------  ----------------------------------------
 
 
 def json_response(r):
@@ -194,21 +250,11 @@ def json_response(r):
 				print "j"
 		return j
 
-
-
-def playa_play(playa, content):
-	global i
-	m = i.media_new(content)
-	playa.set_media(m)
-	playa.play()
-
-
 def returnedJson(payload):
 	if payload.get_content_type() == "application/json":
 		j =  json.loads(payload.get_payload())
 		if debug: print("{}JSON String Returned:{} {}".format(bcolors.OKBLUE, bcolors.ENDC, json.dumps(j)))
 	return j
-
 
 def createPayloads(r):
 	data = "Content-Type: " + r.headers['content-type'] +'\r\n\r\n'+ r.content
@@ -231,39 +277,6 @@ def findUsableStream(stream):
 	x = requests.get(stream).content.strip().split('\n')[0]
 	if (x[-4:] == '.mp3') or (x[-4:] == '.acc') or (x[-4:] == '.wav'):return x
 	else:return x[:-4]
-
-
-
-def setupGPIO():
-	GPIO.setwarnings(False)
-	GPIO.cleanup()
-	GPIO.setmode(GPIO.BCM)
-	GPIO.setup(button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-	GPIO.setup(lights, GPIO.OUT)
-	GPIO.output(lights, GPIO.LOW)
-
-
-def runGPIO(lght, low, high, sleeptime):
-	for x in range(low, high):
-		time.sleep(sleeptime)
-		GPIO.output(lght, GPIO.HIGH)
-		time.sleep(sleeptime)
-		GPIO.output(lght, GPIO.LOW)
-
-def helloworld():
-	print "hello world"
-
-def setup():
-	setupGPIO()
-	while send.internet_on() == False:
-		print(".")
-	token = send.gettoken()
-	if token == False:
-		while True:
-			runGPIO(rec_light, 0, 5, .1)
-		runGPIO(plb_light, 0, 5, .1)
-
-
 
 def showjsoncontent(test):
 	objectsX = []
@@ -356,6 +369,236 @@ class streamObject(object):
 class jsonobject(object):
 	type = ""
 	sobject = ""
+
+# ----------------------------------------  ----------------------------------------
+# ---------------------------------------- data code ----------------------------------------
+# ----------------------------------------  ----------------------------------------
+
+import RPi.GPIO as GPIO
+import alsaaudio
+import os
+import email
+
+button = 18 		# GPIO Pin with button connected
+plb_light = 24		# GPIO Pin for the playback/activity light
+rec_light = 25		# GPIO Pin for the recording light
+lights = [plb_light, rec_light] 	# GPIO Pins with LED's connected
+device = "plughw:1" # Name of your microphone/sound card in arecord -L
+#Debug
+debug = 1
+
+class bcolors:
+	HEADER = '\033[95m'
+	OKBLUE = '\033[94m'
+	OKGREEN = '\033[92m'
+	WARNING = '\033[93m'
+	FAIL = '\033[91m'
+	ENDC = '\033[0m'
+	BOLD = '\033[1m'
+	UNDERLINE = '\033[4m'
+
+
+def recordwrite():
+	GPIO.output(rec_light, GPIO.HIGH)
+	inp = generateINP()
+	audio = ""
+	while(GPIO.input(button)==0): # we keep recording while the button is pressed
+		l, data = inp.read()
+		if l:
+			audio += data
+	print("{}Recording Finished.{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	file_path = tmpfolder() +'recording.wav'
+	rf = open(file_path, 'w')
+	rf.write(audio)
+	rf.close()
+	inp = None
+	return file_path
+
+def generateINP():
+	inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device)
+	inp.setchannels(1)
+	inp.setrate(16000)
+	inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+	inp.setperiodsize(500)
+	return inp
+
+def tmpfolder():
+    return os.path.realpath(__file__).rstrip(os.path.basename(__file__))
+
+
+def audioDownloadsList(r):
+	audioList = []
+	if r.status_code == 200:
+		payloads = createPayloads(r)
+		num = 0
+		for payload in payloads:
+			if payload.get_content_type() == "audio/mpeg":
+				print num
+				num += 1
+				filename = tmpfolder() + "tmpcontent/"+"response"+str(num)+".mp3"
+				with open(filename, 'wb') as f:
+					f.write(payload.get_payload())
+				audioList.append(filename)
+
+	return audioList
+
+def createPayloads(r):
+	data = "Content-Type: " + r.headers['content-type'] +'\r\n\r\n'+ r.content
+	msg = email.message_from_string(data)
+	return msg.get_payload()
+
+
+# --------------------------------  ----------------------------
+# -------------------------------- sending code----------------------------
+# --------------------------------  ----------------------------
+
+import requests
+from memcache import Client
+from creds import *
+import json
+import time
+
+servers = ["127.0.0.1:11211"]
+mc = Client(servers, debug=1)
+
+# button = 18 		# GPIO Pin with button connected
+# plb_light = 24		# GPIO Pin for the playback/activity light
+# rec_light = 25		# GPIO Pin for the recording light
+# lights = [plb_light, rec_light] 	# GPIO Pins with LED's connected
+# device = "plughw:1" # Name of your microphone/sound card in arecord -L
+# #Debug
+# debug = 1
+
+
+def alexa_speech_recognizer(file_path, token):
+	if debug: print("{}Sending Speech Request...{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	GPIO.output(plb_light, GPIO.HIGH)
+	url = 'https://access-alexa-na.amazon.com/v1/avs/speechrecognizer/recognize'
+	headers = {'Authorization' : 'Bearer %s' % gettoken()}
+	d = {
+		"messageHeader": {
+			"deviceContext": [
+				{
+					"name": "playbackState",
+					"namespace": "AudioPlayer",
+					"payload": {
+					"streamId": "",
+						"offsetInMilliseconds": "0",
+						"playerActivity": "IDLE"
+					}
+				}
+			]
+		},
+		"messageBody": {
+			"profile": "alexa-close-talk",
+			"locale": "en-us",
+			"format": "audio/L16; rate=16000; channels=1"
+		}
+	}
+	with open(file_path) as inf:
+		files = [
+				('file', ('request', json.dumps(d), 'application/json; charset=UTF-8')),
+				('file', ('audio', inf, 'audio/L16; rate=16000; channels=1'))
+				]
+		print " >>>---->>"
+		r = requests.post(url, headers=headers, files=files)
+	return r
+
+def internet_on():
+	print("Checking Internet Connection...")
+	try:
+		r =requests.get('https://api.amazon.com/auth/o2/token')
+		print("Connection {}OK{}".format(bcolors.OKGREEN, bcolors.ENDC))
+		return True
+	except:
+		print("Connection {}Failed{}".format(bcolors.WARNING, bcolors.ENDC))
+		return False
+
+def gettoken():
+	token = mc.get("access_token")
+	refresh = refresh_token
+	if token:
+		return token
+	elif refresh:
+		payload = {"client_id" : Client_ID, "client_secret" : Client_Secret, "refresh_token" : refresh, "grant_type" : "refresh_token", }
+		url = "https://api.amazon.com/auth/o2/token"
+		r = requests.post(url, data = payload)
+		resp = json.loads(r.text)
+		mc.set("access_token", resp['access_token'], 3570)
+		return resp['access_token']
+	else:
+		return False
+
+def alexa_getnextitem(nav_token):
+	# https://developer.amazon.com/public/solutions/alexa/alexa-voice-service/rest/audioplayer-getnextitem-request
+	time.sleep(0.5)
+	# if audioplaying == False:
+	if debug: print("{}Sending GetNextItem Request...{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	GPIO.output(plb_light, GPIO.HIGH)
+	url = 'https://access-alexa-na.amazon.com/v1/avs/audioplayer/getNextItem'
+	headers = {'Authorization' : 'Bearer %s' % gettoken(), 'content-type' : 'application/json; charset=UTF-8'}
+	d = {
+		"messageHeader": {},
+		"messageBody": {
+			"navigationToken": nav_token
+		}
+	}
+	r = requests.post(url, headers=headers, data=json.dumps(d))
+	return r
+
+def alexa_playback_progress_report_request(requestType, playerActivity, streamid):
+	# https://developer.amazon.com/public/solutions/alexa/alexa-voice-service/rest/audioplayer-events-requests
+	# streamId                  Specifies the identifier for the current stream.
+	# offsetInMilliseconds      Specifies the current position in the track, in milliseconds.
+	# playerActivity            IDLE, PAUSED, or PLAYING
+	if debug: print("{}Sending Playback Progress Report Request...{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	headers = {'Authorization' : 'Bearer %s' % gettoken()}
+	d = {
+		"messageHeader": {},
+		"messageBody": {
+			"playbackState": {
+				"streamId": streamid,
+				"offsetInMilliseconds": 0,
+				"playerActivity": playerActivity.upper()
+			}
+		}
+	}
+
+	url = urlofRequestType(requestType)
+	r = requests.post(url, headers=headers, data=json.dumps(d))
+	if r.status_code != 204:
+		print("{}(alexa_playback_progress_report_request Response){} {}".format(bcolors.WARNING, bcolors.ENDC, r))
+	else:
+		if debug: print("{}Playback Progress Report was {}Successful!{}".format(bcolors.OKBLUE, bcolors.OKGREEN, bcolors.ENDC))
+
+def urlofRequestType(requestType):
+	if requestType.upper() == "ERROR":
+		# The Playback Error method sends a notification to AVS that the audio player has experienced an issue during playback.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackError"
+	elif requestType.upper() ==  "FINISHED":
+		# The Playback Finished method sends a notification to AVS that the audio player has completed playback.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackFinished"
+	elif requestType.upper() ==  "IDLE":
+		# The Playback Idle method sends a notification to AVS that the audio player has reached the end of the playlist.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackIdle"
+	elif requestType.upper() ==  "INTERRUPTED":
+		# The Playback Interrupted method sends a notification to AVS that the audio player has been interrupted.
+		# Note: The audio player may have been interrupted by a previous stop Directive.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackInterrupted"
+	elif requestType.upper() ==  "PROGRESS_REPORT":
+		# The Playback Progress Report method sends a notification to AVS with the current state of the audio player.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackProgressReport"
+	elif requestType.upper() ==  "STARTED":
+		# The Playback Started method sends a notification to AVS that the audio player has started playing.
+		url = "https://access-alexa-na.amazon.com/v1/avs/audioplayer/playbackStarted"
+	else:
+		url = ""
+	return url
+
+
+# --------------------------------  ----------------------------
+# -------------------------------- starting code----------------------------
+# --------------------------------  ----------------------------
 
 
 if __name__ == "__main__":
