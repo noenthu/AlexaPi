@@ -44,6 +44,7 @@ def start():
 	global abcdefgh
 	abcdefgh = vlcplayer(i)
 	# while True:
+	GPIO.add_event_detect(button, GPIO.FALLING, callback=detect_button, bouncetime=100)
 
 	print("{}Ready to Record.{}".format(bcolors.OKBLUE, bcolors.ENDC))
 	# GPIO.wait_for_edge(button, GPIO.FALLING) # we wait for the button to be pressed
@@ -62,6 +63,16 @@ def start():
 
 TOP_DIR = os.path.dirname(os.path.abspath(__file__))
 DETECT_DING = os.path.join(TOP_DIR, "resources/ding.wav")
+
+def detect_button(channel):
+	global button_pressed
+	if debug: print("{}Button Pressed! Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	time.sleep(.05) # time for the button input to settle down
+	while (GPIO.input(button)==0):
+		button_pressed = True
+		abcdefgh.stop()
+	# if debug: print("{}Recording Finished.{}".format(bcolors.OKBLUE, bcolors.ENDC))
+	# button_pressed = False
 
 def killswitch(playa):
 	abcdefgh.stop()
@@ -704,6 +715,3 @@ def urlofRequestType(requestType):
 # --------------------------------  ----------------------------
 
 
-# if __name__ == "__main__":
-# 	setup()
-# 	start()
