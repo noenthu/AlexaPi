@@ -48,8 +48,6 @@ def start():
 		GPIO.wait_for_edge(button, GPIO.FALLING) # we wait for the button to be pressed
 		playa = vlcplayer(i)
 
-
-		print currentState
 		if (abcdefgh.get_state() == 3) or (abcdefgh.get_state() == 6):
 			print("{}Stop current Audio.{}".format(bcolors.OKBLUE, bcolors.ENDC))
 			abcdefgh.stop()
@@ -68,6 +66,7 @@ def vlcplayer(i):
 	return p
 
 def nextItemX(navtoke, playa):
+	print "------- . ..... .> perhaps i need to wait here - and not get so excited"
 	r = alexa_getnextitem(navtoke)
 	process_response(r, playa)
 
@@ -82,13 +81,16 @@ def state_callback(event, player):
 	print state
 
 	if state == 6:
-		if len(songs) > 0:
-			playNext()
-
 		if len(songs) == 0:
 			if continueitems is not None:
 				if len(continueitems) > 0:
 					nextItemX(continueitems[0], player)
+
+		if len(songs) > 0:
+			playNext()
+
+
+		# songs.pop(0)
 
 	currentState = player.get_state()
 	if currentState != 6:
@@ -126,13 +128,20 @@ def process_response(r, playa):
 	print 'add anything else'
 	songs = playaudioitems(acontent, playa, songs)
 
+
 	print "set next round"
 	continueitems = shouldwecontinueon(content, acontent, playa)
-
+	print continueitems
+	print len(continueitems)
+	print "------>>>> song list"
+	print len(songs)
 	if len(songs) > 0:
+		print "------>>>> song list"
+		print len(songs)
+		print songs[0]
 		pthread = threading.Thread(target=playa_play, args=(playa, songs[0]))
 		pthread.start()
-		songs.pop(0)
+		# songs.pop(0)
 
 	print "----------------------- >>>>>>>> end"
 
@@ -172,9 +181,15 @@ def playaudioitems(audio, playa, songlist):
 			for link in item.streamurls:
 				if (link.find('opml.radiotime.com') != -1): # and (link.find('cid') == -1):
 					content = findUsableStream(link)
+					print content
 					songlist.append(content)
-				elif link.find("cid") == -1:
+				# elif link.find("cid") == -1:
+				else:
+					print "else"
 					songlist.append(link)
+					print link
+
+	print songlist
 	return songlist
 
 def shouldwecontinueon(content, acontent, playa):
@@ -182,17 +197,16 @@ def shouldwecontinueon(content, acontent, playa):
 	continueitem = []
 
 	for item in content:
-		print item.navtoken
 		if len(item.navtoken) != 0:
 			continueitem.append(item.navtoken[0])
-			return continueitem
+
 	for item in acontent:
-		print item.navtoken
 		if len(item.navtoken) != 0:
 			continueitem.append(item.navtoken[0])
-			return continueitem
-		else:
-			return continueitem
+
+	print len(continueitem)
+	return continueitem
+
 
 
 def playa_play(playa, content):
