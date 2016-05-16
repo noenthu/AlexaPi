@@ -80,7 +80,7 @@ def state_callback(event, player):
 	print ">>--->>  CALLBACK <<---<<"
 	print state
 
-	if state == 6:
+	if (state == 6) or (state == 7):
 		if len(songs) == 0:
 			if continueitems is not None:
 				if len(continueitems) > 0:
