@@ -139,7 +139,7 @@ def process_response(r, playa):
 		print "------>>>> song list"
 		print len(songs)
 		print songs[0]
-		pthread = threading.Thread(target=playa_play, args=(playa, songs[0]))
+		pthread = threading.Thread(target=playa_play, args=(playa, ""))
 		pthread.start()
 		# songs.pop(0)
 
