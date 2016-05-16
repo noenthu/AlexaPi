@@ -289,7 +289,9 @@ def find_values(id, json_repr):
 
 def findUsableStream(stream):
 	x = requests.get(stream).content.strip().split('\n')[0]
-	if (x[-4:] == '.mp3') or (x[-4:] == '.acc') or (x[-4:] == '.wav') or (x[-4:] == '8008'):return x
+	if (x[-4:] == '.mp3') or (x[-4:] == '.acc') or (x[-4:] == '.wav') or (x[-4:] == '8008') or (x[-4:] == '9008'):return x
+	elif (x[-4:] == '.pls'):
+		return re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', requests.get(x).content)[0]
 	else:return x[:-4]
 
 def showjsoncontent(test):
