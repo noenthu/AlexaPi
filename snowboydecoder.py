@@ -11,6 +11,7 @@ import vlc
 import main
 from subprocess import Popen
 import os, signal
+from main import returnabcdefgh
 
 logging.basicConfig()
 logger = logging.getLogger("snowboy")
@@ -20,7 +21,8 @@ TOP_DIR = os.path.dirname(os.path.abspath(__file__))
 RESOURCE_FILE = os.path.join(TOP_DIR, "resources/common.res")
 DETECT_DING = os.path.join(TOP_DIR, "resources/ding.wav")
 DETECT_DONG = os.path.join(TOP_DIR, "resources/dong.wav")
-# global playa, abc
+global ax
+ax = ""
 
 class RingBuffer(object):
     """Ring buffer to hold audio from PortAudio"""
@@ -122,6 +124,7 @@ class HotwordDetector(object):
     def start(self, detected_callback=play_audio_file,
               interrupt_check=lambda: False,
               sleep_time=0.03):
+
         """
         Start the voice detector. For every `sleep_time` second it checks the
         audio buffer for triggering keywords. If detected, then call
@@ -156,6 +159,7 @@ class HotwordDetector(object):
         logger.debug("detecting...")
         # self.check_kill_process("main.py")
         while True:
+            #this keeps running
             if interrupt_check():
                 print "interrupt check"
                 logger.debug("detect voice break")
@@ -170,16 +174,22 @@ class HotwordDetector(object):
             if ans == -1:
                 logger.warning("Error initializing streams or reading audio data")
             elif ans > 0:
+                if ax != "":
+                    print "zero"
+                    ax = returnabcdefgh()
+                    ax.stop()
+
                 message = "Keyword " + str(ans) + " detected at time: "
                 message += time.strftime("%Y-%m-%d %H:%M:%S",
                                          time.localtime(time.time()))
                 logger.info(message)
                 callback = detected_callback[ans-1]
-
+                global ax
                 import main
                 main.setup()
                 main.start()
 
+                ax = returnabcdefgh()
 
         logger.debug("finished.")
 
