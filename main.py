@@ -39,9 +39,11 @@ debug = 1
 
 i = vlc.Instance('--aout=alsa')
 currentState = 0
+responseneeded = 0
 
 def start():
 	global abcdefgh
+
 	abcdefgh = vlcplayer(i)
 	# while True:
 	GPIO.add_event_detect(button, GPIO.FALLING, callback=detect_button, bouncetime=100)
@@ -115,6 +117,7 @@ def recordAudio():
 	waveFile.setframerate(RATE)
 	waveFile.writeframes(b''.join(frames))
 	waveFile.close()
+	play_audio_file(DETECT_DING)
 
 
 def play_audio_file(fname=DETECT_DING):
@@ -153,6 +156,7 @@ def nextItemX(navtoke, playa):
 def state_callback(event, player):
 	global currentState
 	global abcdefgh
+	global responseneeded
 
 	state = player.get_state()
 	currentState = state
@@ -165,9 +169,17 @@ def state_callback(event, player):
 			if continueitems is not None:
 				if len(continueitems) > 0:
 					nextItemX(continueitems[0], player)
+				elif responseneeded == 1:
+					responseneeded = 0
+					recordAudio()
+					file_path = tmpfolder() +'recording.wav'
+					r = alexa_speech_recognizer(file_path, gettoken())
+					process_response(r, player)
 
 		if len(songs) > 0:
 			playNext()
+
+
 
 
 	# if (state == 7) and (player.is_playing == 0):
@@ -230,7 +242,6 @@ def process_response(r, playa):
 		print songs[0]
 		pthread = threading.Thread(target=playa_play, args=(playa, ""))
 		pthread.start()
-		# songs.pop(0)
 
 	print "----------------------- >>>>>>>> end"
 
@@ -246,7 +257,7 @@ def playfirstcontent(playlist, playa):
 
 def playsecondcontent(audio, playa, tlist):
 	print ">>----------------------------------> SECOND CONTENT"
-
+	global responseneeded
 	for item in audio:
 		if item.name == "play":
 			print ">>----------------------------->>>> PLAY"
@@ -260,6 +271,10 @@ def playsecondcontent(audio, playa, tlist):
 					tlist.append(content)
 				elif link.find("cid") == -1:
 					tlist.append(link)
+		if item.name == "listen":
+			print "------------------------>>"
+			print "we need to run a 5 second recording at some point to send back???"
+			responseneeded = 1
 	return tlist
 
 def playaudioitems(audio, playa, songlist):
@@ -715,3 +730,6 @@ def urlofRequestType(requestType):
 # --------------------------------  ----------------------------
 
 
+# if __name__ == "__main__":
+# 	setup()
+# 	start()
