@@ -12,7 +12,7 @@ import json
 import re
 import vlc
 import threading
-import cgi 
+import cgi
 import email
 import pyaudio
 
@@ -189,6 +189,10 @@ def state_callback(event, player):
 	if currentState != 6:
 		abcdefgh = player
 		print "set player"
+
+def returnabcdefgh():
+	global abcdefgh
+	return abcdefgh
 
 
 def playNext():
