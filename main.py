@@ -15,7 +15,15 @@ import threading
 import cgi
 import email
 import pyaudio
+from memcache import Client
+from creds import *
 
+servers = ["127.0.0.1:11211"]
+mc = Client(servers, debug=1)
+
+TOP_DIR = os.path.dirname(os.path.abspath(__file__))
+DETECT_DING = os.path.join(TOP_DIR, "resources/ding.wav")
+DETECT_DONG = os.path.join(TOP_DIR, "resources/dong.wav")
 
 class bcolors:
 	HEADER = '\033[95m'
@@ -41,46 +49,21 @@ i = vlc.Instance('--aout=alsa')
 currentState = 0
 responseneeded = 0
 
+
 def start():
 	global abcdefgh
-
 	abcdefgh = vlcplayer(i)
-	# while True:
-	GPIO.add_event_detect(button, GPIO.FALLING, callback=detect_button, bouncetime=100)
 
 	print("{}Ready to Record.{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	# GPIO.wait_for_edge(button, GPIO.FALLING) # we wait for the button to be pressed
 	playa = vlcplayer(i)
 
 	print("{}Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	# start = time.time()
-	recordAudio()
-	# file_path = recordwrite()
+	recordAudio(playa)
+
+	process_response(alexa_speech_recognizer(wavfile(), gettoken()), playa)
 
 
-	file_path = tmpfolder() +'recording.wav'
-	r = alexa_speech_recognizer(file_path, gettoken())
-	process_response(r, playa)
-	return playa
-
-TOP_DIR = os.path.dirname(os.path.abspath(__file__))
-DETECT_DING = os.path.join(TOP_DIR, "resources/ding.wav")
-
-def detect_button(channel):
-	global button_pressed
-	if debug: print("{}Button Pressed! Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	time.sleep(.05) # time for the button input to settle down
-	while (GPIO.input(button)==0):
-		button_pressed = True
-		abcdefgh.stop()
-	# if debug: print("{}Recording Finished.{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	# button_pressed = False
-
-def killswitch(playa):
-	abcdefgh.stop()
-	playa.stop()
-
-def recordAudio():
+def recordAudio(playa):
 
 	FORMAT = pyaudio.paInt16
 	CHANNELS = 1
@@ -90,7 +73,7 @@ def recordAudio():
 	WAVE_OUTPUT_FILENAME = "recording.wav"
 
 	audio = pyaudio.PyAudio()
-	play_audio_file(DETECT_DING)
+	play_audio_file(DETECT_DONG)
 	# start Recording
 	stream = audio.open(format=FORMAT,
 						channels=CHANNELS,
@@ -121,12 +104,6 @@ def recordAudio():
 
 
 def play_audio_file(fname=DETECT_DING):
-    """Simple callback function to play a wave file. By default it plays
-    a Ding sound.
-
-    :param str fname: wave file name
-    :return: None
-    """
     ding_wav = wave.open(fname, 'rb')
     ding_data = ding_wav.readframes(ding_wav.getnframes())
     audio = pyaudio.PyAudio()
@@ -149,7 +126,6 @@ def vlcplayer(i):
 	return p
 
 def nextItemX(navtoke, playa):
-	print "------- . ..... .> perhaps i need to wait here - and not get so excited"
 	r = alexa_getnextitem(navtoke)
 	process_response(r, playa)
 
@@ -179,16 +155,11 @@ def state_callback(event, player):
 		if len(songs) > 0:
 			playNext()
 
-
-
-
-	# if (state == 7) and (player.is_playing == 0):
-	# 	ifweerroroutreload()
-
 	currentState = player.get_state()
 	if currentState != 6:
 		abcdefgh = player
 		print "set player"
+
 
 def returnabcdefgh():
 	global abcdefgh
@@ -203,12 +174,6 @@ def playNext():
 	songs.pop(0)
 	pthread.start()
 
-def ifweerroroutreload():
-	#do a reload or resend of the last command if we crash?
-	playa = vlcplayer(i)
-	file_path = datum.tmpfolder() +'recording.wav'
-	r = alexa_speech_recognizer(file_path, gettoken())
-	process_response(r, playa)
 
 
 # ----------------------------------------  ----------------------------------------
@@ -219,48 +184,42 @@ def ifweerroroutreload():
 def process_response(r, playa):
 	global i, songs, continueitems
 	continueitems = []
-	print "begin finding content"
-
+	print "parse content"
 	content = showjsoncontent(json.dumps(json_response(r)))
 	acontent = defineAudioContent(json.dumps(json_response(r)))
 
-	print "add any downloadable content"
+	print "download content and play first file"
 	songs = playfirstcontent(audioDownloadsList(r), playa)
 
-	print 'add any streams'
+	print 'find any streams'
 	songs = playsecondcontent(content, playa, songs)
 
 	print 'add anything else'
 	songs = playaudioitems(acontent, playa, songs)
 
-
-	print "set next round"
+	print "check for next round"
 	continueitems = shouldwecontinueon(content, acontent, playa)
-	print continueitems
-	print len(continueitems)
-	print "------>>>> song list"
-	print len(songs)
-	if len(songs) > 0:
-		print "------>>>> song list"
-		print len(songs)
-		print songs[0]
-		pthread = threading.Thread(target=playa_play, args=(playa, ""))
-		pthread.start()
 
 	print "----------------------- >>>>>>>> end"
 
 
-
 def playfirstcontent(playlist, playa):
-	print ">>----------------------------------> FIRST CONTENT"
 	threadlist = []
 	for song in playlist:
 		print ">>----------------------------------> SPEAK"
 		threadlist.append(song)
+	if len(threadlist) > 0:
+		pthread = threading.Thread(target=playa_play, args=(playa, threadlist[0]))
+		pthread.start()
+		threadlist.pop(0)
+	else:
+		pthread = threading.Thread(target=playa_play, args=(playa, ""))
+		pthread.start()
+
 	return threadlist
 
+
 def playsecondcontent(audio, playa, tlist):
-	print ">>----------------------------------> SECOND CONTENT"
 	global responseneeded
 	for item in audio:
 		if item.name == "play":
@@ -276,26 +235,30 @@ def playsecondcontent(audio, playa, tlist):
 				elif link.find("cid") == -1:
 					tlist.append(link)
 		if item.name == "listen":
-			print "------------------------>>"
-			print "we need to run a 5 second recording at some point to send back???"
+			print "------------------------>> LISTEN"
 			responseneeded = 1
 	return tlist
+
 
 def playaudioitems(audio, playa, songlist):
 	print ">>-------------------------->>> Audio Items"
 	for item in audio:
-		print item.name  # item name checked here
 		if item.name == "audioContent":
 			for link in item.streamurls:
+				ab = link.find('streamtheworld')
 				if (link.find('opml.radiotime.com') != -1): # and (link.find('cid') == -1):
 					content = findUsableStream(link)
 					print content
+					if content.find('streamtheworld') != -1:
+						newcontent = findUsableStream(content)
+						songlist.append(newcontent)
+					else:
+						songlist.append(content)
+				elif (ab != -1):
+					content = findUsableStream(link)
 					songlist.append(content)
-				# elif link.find("cid") == -1:
 				else:
-					print "else"
 					songlist.append(link)
-					print link
 
 	print songlist
 	return songlist
@@ -303,16 +266,12 @@ def playaudioitems(audio, playa, songlist):
 def shouldwecontinueon(content, acontent, playa):
 	print "------------------------>>> should we continue?"
 	continueitem = []
-
 	for item in content:
 		if len(item.navtoken) != 0:
 			continueitem.append(item.navtoken[0])
-
 	for item in acontent:
 		if len(item.navtoken) != 0:
 			continueitem.append(item.navtoken[0])
-
-	print len(continueitem)
 	return continueitem
 
 
@@ -350,8 +309,8 @@ def runGPIO(lght, low, high, sleeptime):
 
 def setup():
 	setupGPIO()
-	while internet_on() == False:
-		print(".")
+	# while internet_on() == False:
+	# 	print(".")
 	token = gettoken()
 	if token == False:
 		while True:
@@ -396,11 +355,20 @@ def find_values(id, json_repr):
 
 
 def findUsableStream(stream):
-	x = requests.get(stream).content.strip().split('\n')[0]
-	if (x[-4:] == '.mp3') or (x[-4:] == '.acc') or (x[-4:] == '.wav') or (x[-4:] == '8008') or (x[-4:] == '9008'):return x
+	rgx = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+	y = requests.get(stream).content.strip().split('\n')
+	if y[0].find('http') == -1:x = y[1]
+	else:x = y[0]
+	if (x[-4:] == '.mp3') or (x[-4:] == '.acc') or (x[-4:] == '.wav') or (x[-4:] == '8008') \
+			or (x[-4:] == '9008') or (x[-4:] == '8169'):
+		return x
 	elif (x[-4:] == '.pls'):
-		return re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', requests.get(x).content)[0]
-	else:return x[:-4]
+		return re.findall(rgx, requests.get(x).content)[0]
+	elif (x[-4:] == '.m3u') and (x[-8:][:1] == "."):
+		return x[:-4]
+	else:
+		return re.findall(rgx, x)[0]
+
 
 def showjsoncontent(test):
 	objectsX = []
@@ -409,7 +377,7 @@ def showjsoncontent(test):
 	newlist = []
 	for item in boox:
 		newlist.append('{"namespace"'+item)
-	# print item
+
 	print " "
 	for item in newlist:
 		ab = item.rsplit(',',1)[0]
@@ -420,6 +388,7 @@ def showjsoncontent(test):
 			sob = returnSOB(ab)
 		print ""
 		objectsX.append(sob)
+
 	return objectsX
 
 
@@ -498,66 +467,13 @@ class jsonobject(object):
 # ---------------------------------------- data code ----------------------------------------
 # ----------------------------------------  ----------------------------------------
 
-import RPi.GPIO as GPIO
-import alsaaudio
-import os
-import email
 
-button = 18 		# GPIO Pin with button connected
-plb_light = 24		# GPIO Pin for the playback/activity light
-rec_light = 25		# GPIO Pin for the recording light
-lights = [plb_light, rec_light] 	# GPIO Pins with LED's connected
-device = "plughw:1" # Name of your microphone/sound card in arecord -L
-#Debug
-debug = 1
-
-class bcolors:
-	HEADER = '\033[95m'
-	OKBLUE = '\033[94m'
-	OKGREEN = '\033[92m'
-	WARNING = '\033[93m'
-	FAIL = '\033[91m'
-	ENDC = '\033[0m'
-	BOLD = '\033[1m'
-	UNDERLINE = '\033[4m'
-
-
-def recordwrite():
-	GPIO.output(rec_light, GPIO.HIGH)
-	inp = generateINP()
-	audio = ""
-	time.clock()
-	elapsed = 0
-	while elapsed < seconds:
-		file_path = recordwrite()
-		elapsed = time.time() - start
-		print "loop cycle time: %f, seconds count: %02d" % (time.clock() , elapsed)
-
-	# while(GPIO.input(button)==0): # we keep recording while the button is pressed
-		l, data = inp.read()
-		if l:
-			audio += data
-		time.sleep(1)
-
-	print("{}Recording Finished.{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	file_path = tmpfolder() +'recording.wav'
-	rf = open(file_path, 'w')
-	rf.write(audio)
-	rf.close()
-	inp = None
-	return file_path
-
-def generateINP():
-	inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device)
-	inp.setchannels(1)
-	inp.setrate(16000)
-	inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
-	inp.setperiodsize(500)
-	return inp
 
 def tmpfolder():
     return os.path.realpath(__file__).rstrip(os.path.basename(__file__))
 
+def wavfile():
+	return tmpfolder() +'recording.wav'
 
 def audioDownloadsList(r):
 	audioList = []
@@ -575,32 +491,13 @@ def audioDownloadsList(r):
 
 	return audioList
 
-def createPayloads(r):
-	data = "Content-Type: " + r.headers['content-type'] +'\r\n\r\n'+ r.content
-	msg = email.message_from_string(data)
-	return msg.get_payload()
 
 
 # --------------------------------  ----------------------------
 # -------------------------------- sending code----------------------------
 # --------------------------------  ----------------------------
 
-import requests
-from memcache import Client
-from creds import *
-import json
-import time
 
-servers = ["127.0.0.1:11211"]
-mc = Client(servers, debug=1)
-
-# button = 18 		# GPIO Pin with button connected
-# plb_light = 24		# GPIO Pin for the playback/activity light
-# rec_light = 25		# GPIO Pin for the recording light
-# lights = [plb_light, rec_light] 	# GPIO Pins with LED's connected
-# device = "plughw:1" # Name of your microphone/sound card in arecord -L
-# #Debug
-# debug = 1
 
 
 def alexa_speech_recognizer(file_path, token):
@@ -729,11 +626,4 @@ def urlofRequestType(requestType):
 	return url
 
 
-# --------------------------------  ----------------------------
-# -------------------------------- starting code----------------------------
-# --------------------------------  ----------------------------
 
-
-# if __name__ == "__main__":
-# 	setup()
-# 	start()
