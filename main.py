@@ -58,12 +58,12 @@ def start():
 	playa = vlcplayer(i)
 
 	print("{}Recording...{}".format(bcolors.OKBLUE, bcolors.ENDC))
-	recordAudio(playa)
+	recordAudio()
 
 	process_response(alexa_speech_recognizer(wavfile(), gettoken()), playa)
 
 
-def recordAudio(playa):
+def recordAudio():
 
 	FORMAT = pyaudio.paInt16
 	CHANNELS = 1
@@ -148,9 +148,7 @@ def state_callback(event, player):
 				elif responseneeded == 1:
 					responseneeded = 0
 					recordAudio()
-					file_path = tmpfolder() +'recording.wav'
-					r = alexa_speech_recognizer(file_path, gettoken())
-					process_response(r, player)
+					process_response(alexa_speech_recognizer(wavfile(), gettoken()), player)
 
 		if len(songs) > 0:
 			playNext()
@@ -317,9 +315,9 @@ def setup():
 			runGPIO(rec_light, 0, 5, .1)
 		runGPIO(plb_light, 0, 5, .1)
 
-# ----------------------------------------  ----------------------------------------
-# ---------------------------------------- decoding code ----------------------------------------
-# ----------------------------------------  ----------------------------------------
+#  ---------------------------------------- -----------------------------------------
+# ---------------------------------- decoding code -----------------------------------
+#  ---------------------------------------- -----------------------------------------
 
 
 def json_response(r):
@@ -490,7 +488,6 @@ def audioDownloadsList(r):
 				audioList.append(filename)
 
 	return audioList
-
 
 
 # --------------------------------  ----------------------------
