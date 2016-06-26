@@ -16,7 +16,7 @@ case "$1" in
 start)
     echo "Starting Alexa..."
 #    python /root/AlexaPi/main.py &
-    python /root/AlexaPi/start.py Alexa.pmdl &
+    python /root/AlexaPi/start.py snowboy.umdl &
 
 ;;
 
