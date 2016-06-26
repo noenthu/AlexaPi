@@ -467,7 +467,7 @@ class jsonobject(object):
 
 
 
-def Tmpfolder():
+def tmpfolder():
     return os.path.realpath(__file__).rstrip(os.path.basename(__file__))
 
 def wavfile():
