@@ -70,7 +70,7 @@ def recordAudio():
 	RATE = 16000
 	CHUNK = 500
 	RECORD_SECONDS = 5
-	WAVE_OUTPUT_FILENAME = "recording.wav"
+	WAVE_OUTPUT_FILENAME = tmpfolder() + "recording.wav"
 
 	audio = pyaudio.PyAudio()
 	play_audio_file(DETECT_DONG)
@@ -467,7 +467,7 @@ class jsonobject(object):
 
 
 
-def tmpfolder():
+def Tmpfolder():
     return os.path.realpath(__file__).rstrip(os.path.basename(__file__))
 
 def wavfile():
@@ -621,6 +621,3 @@ def urlofRequestType(requestType):
 	else:
 		url = ""
 	return url
-
-
-
